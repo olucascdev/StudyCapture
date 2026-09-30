@@ -36,9 +36,12 @@ async function sendBlock(block: CaptureBlock): Promise<void> {
   try { await uploadBlock(block); await removeBlock(block.sessionId, block.sequence); } catch { /* Persistido; o alarme tentará novamente. */ }
 }
 
-async function flushSession(sessionId: string): Promise<void> {
+async function flushSession(sessionId: string): Promise<{ ok: boolean; error?: string }> {
   const blocks = await blocksForSession(sessionId);
-  for (const block of blocks) { try { await uploadBlock(block); await removeBlock(block.sessionId, block.sequence); } catch { return; } }
+  for (const block of blocks) {
+    try { await uploadBlock(block); await removeBlock(block.sessionId, block.sequence); }
+    catch { return { ok: false, error: "Não foi possível enviar todos os blocos ao servidor." }; }
+  }
   const state = captureState.get(sessionId) ?? { lastSequence: -1, totalSamples: 0 };
   const serverSession = await getSession(sessionId).catch(() => undefined);
   if (serverSession?.last_sequence != null) state.lastSequence = Math.max(state.lastSequence, serverSession.last_sequence);
@@ -48,7 +51,10 @@ async function flushSession(sessionId: string): Promise<void> {
     state.totalSamples = Math.max(state.totalSamples, ...blocks.map((block) => block.positionSamples + block.sampleCount));
   }
   captureState.set(sessionId, state);
-  if (state) { try { await finishSession(sessionId, state.lastSequence, state.totalSamples); } catch { /* o próximo alarme repete */ } }
+  if (state.lastSequence < 0 || state.totalSamples <= 0) return { ok: false, error: "Nenhum bloco de áudio foi capturado. Verifique se a aba está reproduzindo áudio e tente novamente." };
+  try { await finishSession(sessionId, state.lastSequence, state.totalSamples); }
+  catch { return { ok: false, error: "O servidor rejeitou a finalização. A captura foi preservada para nova tentativa." }; }
+  return { ok: true };
 }
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -84,7 +90,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
       if (message.type === "capture-stopped") {
         const state = captureState.get(message.sessionId) ?? { lastSequence: -1, totalSamples: message.totalSamples };
-        state.totalSamples = Math.max(state.totalSamples, message.totalSamples); captureState.set(message.sessionId, state); await flushSession(message.sessionId); return sendResponse({ ok: true });
+        state.totalSamples = Math.max(state.totalSamples, message.totalSamples); captureState.set(message.sessionId, state); return sendResponse(await flushSession(message.sessionId));
       }
       if (message.type === "stop-capture") { await ensureOffscreen(); const response = await chrome.runtime.sendMessage({ type: "offscreen-stop", sessionId: message.sessionId }); return sendResponse(response); }
       if (message.type === "get-session") return sendResponse(await getSession(message.sessionId));

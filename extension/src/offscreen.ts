@@ -7,23 +7,44 @@ async function checksum(data: ArrayBuffer): Promise<string> { const digest = awa
 function arrayBufferToBase64(data: ArrayBuffer): string { const bytes = new Uint8Array(data); let binary = ""; for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length))); return btoa(binary); }
 
 let captureContext: AudioContext | undefined; let playbackContext: AudioContext | undefined; let source: MediaStreamAudioSourceNode | undefined; let recorder: AudioWorkletNode | undefined; let stream: MediaStream | undefined; let activeSession = "";
+let pendingBlockSends: Promise<void> = Promise.resolve();
+let resolveStopped: ((result: { ok?: boolean; error?: string }) => void) | undefined;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "offscreen-start") { void start(message.streamId, message.sessionId).then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: String(error) })); return true; }
-  if (message.type === "offscreen-stop") { recorder?.port.postMessage({ type: "flush" }); void new Promise((resolve) => setTimeout(resolve, 250)).then(() => { stream?.getTracks().forEach((track) => track.stop()); void captureContext?.close(); void playbackContext?.close(); void chrome.offscreen.closeDocument(); sendResponse({ ok: true }); }); return true; }
+  if (message.type === "offscreen-stop") {
+    const stopped = new Promise<{ ok?: boolean; error?: string }>((resolve) => { resolveStopped = resolve; });
+    recorder?.port.postMessage({ type: "flush" });
+    void new Promise((resolve) => setTimeout(resolve, 250)).then(async () => {
+      await pendingBlockSends;
+      const result = await Promise.race([stopped, new Promise<{ ok: boolean; error: string }>((resolve) => setTimeout(() => resolve({ ok: false, error: "A captura não respondeu ao comando de parada." }), 1500))]);
+      resolveStopped = undefined;
+      stream?.getTracks().forEach((track) => track.stop()); await captureContext?.close(); await playbackContext?.close(); sendResponse(result);
+    });
+    return true;
+  }
   return false;
 });
 
 async function start(streamId: string, sessionId: string): Promise<void> {
   activeSession = sessionId;
+  pendingBlockSends = Promise.resolve();
   stream = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } } } as MediaStreamConstraints);
   captureContext = new AudioContext({ sampleRate: 16_000 }); playbackContext = new AudioContext();
   await captureContext.audioWorklet.addModule(chrome.runtime.getURL("audio-worklet.js"));
-  source = captureContext.createMediaStreamSource(stream); recorder = new AudioWorkletNode(captureContext, "pcm-capture-processor"); source.connect(recorder);
+  source = captureContext.createMediaStreamSource(stream); recorder = new AudioWorkletNode(captureContext, "pcm-capture-processor");
   const playbackSource = playbackContext.createMediaStreamSource(stream); playbackSource.connect(playbackContext.destination);
+  const silentOutput = captureContext.createGain(); silentOutput.gain.value = 0; silentOutput.connect(captureContext.destination);
+  source.connect(recorder); recorder.connect(silentOutput);
   recorder.port.onmessage = (event) => {
-    if (event.data.type === "block") void (async () => { const audio = pcmToWav(event.data.pcm); await chrome.runtime.sendMessage({ type: "capture-block", sessionId: activeSession, sequence: event.data.sequence, positionSamples: event.data.positionSamples, sampleCount: event.data.sampleCount, checksum: await checksum(audio), audioBase64: arrayBufferToBase64(audio) }); })();
-    if (event.data.type === "stopped") void chrome.runtime.sendMessage({ type: "capture-stopped", sessionId: activeSession, totalSamples: event.data.totalSamples });
+    if (event.data.type === "block") {
+      const block = pendingBlockSends.then(async () => {
+        const audio = pcmToWav(event.data.pcm);
+        await chrome.runtime.sendMessage({ type: "capture-block", sessionId: activeSession, sequence: event.data.sequence, positionSamples: event.data.positionSamples, sampleCount: event.data.sampleCount, checksum: await checksum(audio), audioBase64: arrayBufferToBase64(audio) });
+      });
+      pendingBlockSends = block.catch(() => undefined);
+    }
+    if (event.data.type === "stopped") void pendingBlockSends.then(async () => { const result = await chrome.runtime.sendMessage({ type: "capture-stopped", sessionId: activeSession, totalSamples: event.data.totalSamples }); resolveStopped?.(result); });
   };
   await captureContext.resume(); await playbackContext.resume();
 }
