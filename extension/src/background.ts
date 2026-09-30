@@ -77,7 +77,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === "start-capture") {
         try {
           await ensureOffscreen();
-          const streamId = await new Promise<string>((resolve, reject) => chrome.tabCapture.getMediaStreamId({ targetTabId: message.tabId }, (id) => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(id)));
+          const streamId = String(message.streamId ?? "");
+          if (!streamId) throw new Error("Não foi possível obter o áudio da aba atual");
           captureState.set(message.sessionId, { lastSequence: -1, totalSamples: 0 });
           const response = await chrome.runtime.sendMessage({ type: "offscreen-start", streamId, sessionId: message.sessionId });
           if (!response?.ok) throw new Error(response?.error ?? "Não foi possível iniciar o áudio");
