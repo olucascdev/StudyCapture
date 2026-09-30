@@ -1,5 +1,5 @@
 import "./popup.css";
-import { createSession, listFolders, listSessions } from "./api";
+import { createSession, interruptSession, listFolders, listSessions } from "./api";
 import type { Session } from "./types";
 import { formatDuration } from "./format";
 
@@ -39,11 +39,11 @@ async function boot() {
   } catch (caught) { $("signal").classList.add("bad"); availability.textContent = "Servidor indisponível"; setError(caught instanceof Error ? caught.message : "Verifique as configurações"); }
 }
 
-start.onclick = async () => { setError(""); start.disabled = true; try {
+start.onclick = async () => { setError(""); start.disabled = true; let createdId = ""; try {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); if (!tab?.id) throw new Error("Não foi possível identificar a aba");
-  const created = await createSession({ title: title.value, url: tab.url ?? "https://unknown.invalid", folder: folder.value, language: language.value || null }); const response = await chrome.runtime.sendMessage({ type: "start-capture", sessionId: created.id, tabId: tab.id }); if (!response.ok) throw new Error(response.error);
+  const created = await createSession({ title: title.value, url: tab.url ?? "https://unknown.invalid", folder: folder.value, language: language.value || null }); createdId = created.id; const response = await chrome.runtime.sendMessage({ type: "start-capture", sessionId: created.id, tabId: tab.id }); if (!response.ok) throw new Error(response.error);
   active = { id: created.id, startedAt: Date.now() }; $("capture-title").textContent = title.value; show("capturing"); monitorCapture();
-} catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível começar"); start.disabled = false; } };
+} catch (caught) { if (createdId) await interruptSession(createdId).catch(() => undefined); setError(caught instanceof Error ? caught.message : "Não foi possível começar"); start.disabled = false; } };
 
 finish.onclick = async () => { if (!active) return; finish.disabled = true; try { const response = await chrome.runtime.sendMessage({ type: "stop-capture", sessionId: active.id }); if (!response?.ok) throw new Error(response?.error ?? "Não foi possível parar a captura"); if (timer) clearInterval(timer); if (poll) clearInterval(poll); show("completion"); await waitForCompletion(active.id); } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível finalizar"); finish.disabled = false; } };
 async function waitForCompletion(id: string) { $("completion-title").textContent = "Processando transcrição"; for (let attempt = 0; attempt < 180; attempt++) { await new Promise((resolve) => setTimeout(resolve, 2000)); const session = await chrome.runtime.sendMessage({ type: "get-session", sessionId: id }); if (session.status === "concluída") { $("completion-title").textContent = "Nota salva no vault"; $("completion-copy").textContent = "A transcrição bruta está pronta no Obsidian."; $("note-path").textContent = session.note_path ?? ""; $("note-path").classList.remove("hidden"); $("open-note").classList.remove("hidden"); $("open-note").onclick = () => { if (session.note_path) window.open(`obsidian://open?file=${encodeURIComponent(session.note_path)}`, "_blank"); }; return; } if (session.transcription_status === "falhou") { $("completion-title").textContent = "Transcrição aguardando"; $("completion-copy").textContent = session.error ?? "A captura foi preservada. Tente novamente após corrigir a configuração."; return; } } }

@@ -32,6 +32,7 @@ export function finishSession(id: string, lastSequence: number, totalSamples: nu
   return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ last_sequence: lastSequence, total_samples: totalSamples }) });
 }
 export function retrySession(id: string) { return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/retry`, { method: "POST" }); }
+export function interruptSession(id: string) { return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/interrupt`, { method: "POST" }); }
 export async function uploadBlock(block: { sessionId: string; sequence: number; positionSamples: number; sampleCount: number; checksum: string; audio: ArrayBuffer }) {
   const token = await getToken();
   const response = await fetch(`${API_BASE}/sessions/${encodeURIComponent(block.sessionId)}/blocks/${block.sequence}`, { method: "PUT", body: block.audio, headers: { "X-StudyCapture-Token": token, "Content-Type": "audio/wav", "X-Position-Samples": String(block.positionSamples), "X-Sample-Count": String(block.sampleCount), "X-Checksum": block.checksum } });

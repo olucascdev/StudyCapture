@@ -1,4 +1,4 @@
-import { createSession, finishSession, getSession, health, listSessions, uploadBlock } from "./api";
+import { createSession, finishSession, getSession, health, interruptSession, listSessions, uploadBlock } from "./api";
 import { backlogBytes, blocksForSession, putBlock, removeBlock } from "./capture-db";
 import type { CaptureBlock } from "./types";
 
@@ -75,12 +75,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message.type === "health") return sendResponse(await health());
       if (message.type === "create-session") return sendResponse(await createSession(message.payload));
       if (message.type === "start-capture") {
-        await ensureOffscreen();
-        const streamId = await new Promise<string>((resolve, reject) => chrome.tabCapture.getMediaStreamId({ targetTabId: message.tabId }, (id) => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(id)));
-        captureState.set(message.sessionId, { lastSequence: -1, totalSamples: 0 });
-        const response = await chrome.runtime.sendMessage({ type: "offscreen-start", streamId, sessionId: message.sessionId });
-        if (!response?.ok) throw new Error(response?.error ?? "Não foi possível iniciar o áudio");
-        return sendResponse({ ok: true });
+        try {
+          await ensureOffscreen();
+          const streamId = await new Promise<string>((resolve, reject) => chrome.tabCapture.getMediaStreamId({ targetTabId: message.tabId }, (id) => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(id)));
+          captureState.set(message.sessionId, { lastSequence: -1, totalSamples: 0 });
+          const response = await chrome.runtime.sendMessage({ type: "offscreen-start", streamId, sessionId: message.sessionId });
+          if (!response?.ok) throw new Error(response?.error ?? "Não foi possível iniciar o áudio");
+          return sendResponse({ ok: true });
+        } catch (caught) {
+          await interruptSession(message.sessionId).catch(() => undefined);
+          throw caught;
+        }
       }
       if (message.type === "capture-block") {
         const block: CaptureBlock = { ...message, audio: base64ToArrayBuffer(message.audioBase64), storedAt: Date.now() };
