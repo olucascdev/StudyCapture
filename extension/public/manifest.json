@@ -3,10 +3,9 @@
   "name": "StudyCapture",
   "description": "Capture uma aula, transcreva localmente e salve no Obsidian.",
   "version": "0.1.0",
-  "action": { "default_title": "StudyCapture" },
-  "side_panel": { "default_path": "popup.html" },
+  "action": { "default_title": "StudyCapture", "default_popup": "popup.html" },
   "options_page": "options.html",
   "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["tabCapture", "activeTab", "offscreen", "storage", "tabs", "alarms", "sidePanel"],
+  "permissions": ["tabCapture", "activeTab", "offscreen", "storage", "tabs", "alarms"],
   "host_permissions": ["http://127.0.0.1:8765/*"]
 }

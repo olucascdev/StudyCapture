@@ -26,7 +26,6 @@ function monitorCapture() {
   timer = window.setInterval(() => { if (active) $("duration").textContent = formatDuration((Date.now() - active.startedAt) / 1000); }, 500);
   poll = window.setInterval(async () => { if (!active) return; const session = await chrome.runtime.sendMessage({ type: "get-session", sessionId: active.id }); if (session?.ok === false) return; $("blocks").textContent = String(session.block_count ?? 0); $("pending").textContent = String(Math.max(0, Math.round((Date.now() - active.startedAt) / 5000 - (session.block_count ?? 0)))); $("meter-fill").style.width = `${Math.min(95, 12 + (session.completed_windows ?? 0) * 8)}%`; }, 2000);
 }
-function getTabStreamId(): Promise<string> { return new Promise((resolve, reject) => chrome.tabCapture.getMediaStreamId({}, (id) => chrome.runtime.lastError ? reject(new Error(chrome.runtime.lastError.message)) : resolve(id))); }
 async function boot() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); title.value = tab?.title ?? "";
   try {
@@ -41,9 +40,8 @@ async function boot() {
 }
 
 start.onclick = async () => { setError(""); start.disabled = true; let createdId = ""; try {
-  const streamId = await getTabStreamId();
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true }); if (!tab?.id) throw new Error("Não foi possível identificar a aba");
-  const created = await createSession({ title: title.value, url: tab.url ?? "https://unknown.invalid", folder: folder.value, language: language.value || null }); createdId = created.id; const response = await chrome.runtime.sendMessage({ type: "start-capture", sessionId: created.id, streamId }); if (!response.ok) throw new Error(response.error);
+  const created = await createSession({ title: title.value, url: tab.url ?? "https://unknown.invalid", folder: folder.value, language: language.value || null }); createdId = created.id; const response = await chrome.runtime.sendMessage({ type: "start-capture", sessionId: created.id, tabId: tab.id }); if (!response.ok) throw new Error(response.error);
   active = { id: created.id, startedAt: Date.now() }; $("capture-title").textContent = title.value; show("capturing"); monitorCapture();
 } catch (caught) { if (createdId) await interruptSession(createdId).catch(() => undefined); setError(caught instanceof Error ? caught.message : "Não foi possível começar"); start.disabled = false; } };
 
