@@ -17,7 +17,7 @@ async function loadFolderTree(parent = "", depth = 0): Promise<void> {
   const result = await listFolders(parent);
   for (const name of result.folders) {
     const path = parent ? `${parent}/${name}` : name;
-    folder.add(new Option(`${"　".repeat(depth)}${name}`, path));
+    folder.add(new Option(path, path));
     await loadFolderTree(path, depth + 1);
   }
 }
@@ -31,6 +31,7 @@ async function boot() {
   try {
     const result = await chrome.runtime.sendMessage({ type: "health" }); if (!result.ok && result.error) throw new Error(result.error);
     $("signal").classList.add("good"); availability.textContent = result.groq ? "Servidor pronto · Groq configurada" : "Servidor online · falta configurar Groq"; start.disabled = !result.groq;
+    folder.options.length = 1;
     await loadFolderTree();
     const sessions = (await listSessions()).sessions; renderHistory(sessions);
     const running = sessions.find((session) => session.status === "capturando");
