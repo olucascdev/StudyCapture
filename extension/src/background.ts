@@ -6,6 +6,15 @@ const MAX_BACKLOG = 512 * 1024 * 1024;
 let offscreenReady: Promise<void> | undefined;
 const captureState = new Map<string, { lastSequence: number; totalSamples: number }>();
 
+async function configureSidePanel(): Promise<void> {
+  if (!chrome.sidePanel) return;
+  try {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  } catch {
+    // Navegadores Chromium antigos podem não implementar este comportamento.
+  }
+}
+
 function base64ToArrayBuffer(value: string): ArrayBuffer {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -42,7 +51,12 @@ async function flushSession(sessionId: string): Promise<void> {
   if (state) { try { await finishSession(sessionId, state.lastSequence, state.totalSamples); } catch { /* o próximo alarme repete */ } }
 }
 
-chrome.runtime.onInstalled.addListener(() => chrome.alarms.create("retry-backlog", { periodInMinutes: 0.5 }));
+chrome.runtime.onInstalled.addListener(() => {
+  void configureSidePanel();
+  void chrome.alarms.create("retry-backlog", { periodInMinutes: 0.5 });
+});
+chrome.runtime.onStartup.addListener(() => { void configureSidePanel(); });
+void configureSidePanel();
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== "retry-backlog") return;
   const sessions = await listSessions().catch(() => ({ sessions: [] }));
