@@ -8,18 +8,14 @@ function arrayBufferToBase64(data: ArrayBuffer): string { const bytes = new Uint
 
 let captureContext: AudioContext | undefined; let playbackContext: AudioContext | undefined; let source: MediaStreamAudioSourceNode | undefined; let recorder: AudioWorkletNode | undefined; let stream: MediaStream | undefined; let activeSession = "";
 let pendingBlockSends: Promise<void> = Promise.resolve();
-let resolveStopped: ((result: { ok?: boolean; error?: string }) => void) | undefined;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "offscreen-start") { void start(message.streamId, message.sessionId).then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: String(error) })); return true; }
   if (message.type === "offscreen-stop") {
-    const stopped = new Promise<{ ok?: boolean; error?: string }>((resolve) => { resolveStopped = resolve; });
     recorder?.port.postMessage({ type: "flush" });
     void new Promise((resolve) => setTimeout(resolve, 250)).then(async () => {
       await pendingBlockSends;
-      const result = await Promise.race([stopped, new Promise<{ ok: boolean; error: string }>((resolve) => setTimeout(() => resolve({ ok: false, error: "A captura não respondeu ao comando de parada." }), 1500))]);
-      resolveStopped = undefined;
-      stream?.getTracks().forEach((track) => track.stop()); await captureContext?.close(); await playbackContext?.close(); sendResponse(result);
+      stream?.getTracks().forEach((track) => track.stop()); await captureContext?.close(); await playbackContext?.close(); sendResponse({ ok: true });
     });
     return true;
   }
@@ -44,7 +40,6 @@ async function start(streamId: string, sessionId: string): Promise<void> {
       });
       pendingBlockSends = block.catch(() => undefined);
     }
-    if (event.data.type === "stopped") void pendingBlockSends.then(async () => { const result = await chrome.runtime.sendMessage({ type: "capture-stopped", sessionId: activeSession, totalSamples: event.data.totalSamples }); resolveStopped?.(result); });
   };
   await captureContext.resume(); await playbackContext.resume();
 }

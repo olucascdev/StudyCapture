@@ -92,7 +92,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const state = captureState.get(message.sessionId) ?? { lastSequence: -1, totalSamples: message.totalSamples };
         state.totalSamples = Math.max(state.totalSamples, message.totalSamples); captureState.set(message.sessionId, state); return sendResponse(await flushSession(message.sessionId));
       }
-      if (message.type === "stop-capture") { await ensureOffscreen(); const response = await chrome.runtime.sendMessage({ type: "offscreen-stop", sessionId: message.sessionId }); return sendResponse(response); }
+      if (message.type === "stop-capture") {
+        await ensureOffscreen();
+        const response = await chrome.runtime.sendMessage({ type: "offscreen-stop", sessionId: message.sessionId });
+        if (!response?.ok) return sendResponse(response ?? { ok: false, error: "Não foi possível parar a captura." });
+        return sendResponse(await flushSession(message.sessionId));
+      }
       if (message.type === "get-session") return sendResponse(await getSession(message.sessionId));
       if (message.type === "retry-session") return sendResponse(await import("./api").then(({ retrySession }) => retrySession(message.sessionId)));
       return sendResponse({ ok: false, error: "Mensagem desconhecida" });
