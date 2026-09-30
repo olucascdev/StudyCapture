@@ -31,6 +31,8 @@ export function getSession(id: string) { return request<Session>(`/sessions/${en
 export function finishSession(id: string, lastSequence: number, totalSamples: number) {
   return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/finish`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ last_sequence: lastSequence, total_samples: totalSamples }) });
 }
+export function pauseSession(id: string) { return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/pause`, { method: "POST" }); }
+export function resumeSession(id: string) { return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/resume`, { method: "POST" }); }
 export function retrySession(id: string) { return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/retry`, { method: "POST" }); }
 export function interruptSession(id: string) { return request<{ id: string; status: string }>(`/sessions/${encodeURIComponent(id)}/interrupt`, { method: "POST" }); }
 export async function uploadBlock(block: { sessionId: string; sequence: number; positionSamples: number; sampleCount: number; checksum: string; audio: ArrayBuffer }) {

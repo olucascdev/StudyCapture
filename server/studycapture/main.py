@@ -138,7 +138,7 @@ async def create_session(payload: CreateSession, _: None = Depends(require_token
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     with db.tx() as conn:
-        active = conn.execute("SELECT id FROM sessions WHERE status IN ('capturando','finalizando') LIMIT 1").fetchone()
+        active = conn.execute("SELECT id FROM sessions WHERE status IN ('capturando','pausada','finalizando') LIMIT 1").fetchone()
     if active:
         raise HTTPException(status_code=409, detail="Já existe uma captura ativa")
     session_id = str(uuid.uuid4())
@@ -161,7 +161,7 @@ async def upload_block(
     _: None = Depends(require_token),
 ) -> dict:
     session = session_or_404(session_id)
-    if session["status"] not in {"capturando", "interrompida", "finalizando"} or sequence < 0:
+    if session["status"] not in {"capturando", "pausada", "interrompida", "finalizando"} or sequence < 0:
         raise HTTPException(status_code=409, detail="Sessão não aceita novos blocos")
     content_length = request.headers.get("content-length")
     if content_length and (not content_length.isdigit() or int(content_length) > settings.max_upload_bytes):
@@ -212,11 +212,27 @@ async def finish_session(session_id: str, payload: FinishSession, _: None = Depe
     session_or_404(session_id)
     with db.tx() as conn:
         conn.execute(
-            "UPDATE sessions SET status='finalizando', finished_at=?, expected_last_sequence=?, total_samples=? WHERE id=? AND status IN ('capturando','interrompida','finalizando')",
+            "UPDATE sessions SET status='finalizando', finished_at=?, expected_last_sequence=?, total_samples=? WHERE id=? AND status IN ('capturando','pausada','interrompida','finalizando')",
             (datetime.now(UTC).isoformat(), payload.last_sequence, payload.total_samples, session_id),
         )
     queue.enqueue(session_id)
     return {"id": session_id, "status": "finalizando"}
+
+
+@app.post("/api/v1/sessions/{session_id}/pause")
+async def pause_session(session_id: str, _: None = Depends(require_token)) -> dict:
+    session_or_404(session_id)
+    with db.tx() as conn:
+        conn.execute("UPDATE sessions SET status='pausada' WHERE id=? AND status='capturando'", (session_id,))
+    return {"id": session_id, "status": "pausada"}
+
+
+@app.post("/api/v1/sessions/{session_id}/resume")
+async def resume_session(session_id: str, _: None = Depends(require_token)) -> dict:
+    session_or_404(session_id)
+    with db.tx() as conn:
+        conn.execute("UPDATE sessions SET status='capturando' WHERE id=? AND status='pausada'", (session_id,))
+    return {"id": session_id, "status": "capturando"}
 
 
 @app.post("/api/v1/sessions/{session_id}/retry")
@@ -233,7 +249,7 @@ async def interrupt_session(session_id: str, _: None = Depends(require_token)) -
     session_or_404(session_id)
     with db.tx() as conn:
         conn.execute(
-            "UPDATE sessions SET status='interrompida', transcription_status='aguardando', error=? WHERE id=? AND status IN ('capturando','finalizando')",
+            "UPDATE sessions SET status='interrompida', transcription_status='aguardando', error=? WHERE id=? AND status IN ('capturando','pausada','finalizando')",
             ("Captura interrompida manualmente durante a recuperação.", session_id),
         )
     return {"id": session_id, "status": "interrompida"}

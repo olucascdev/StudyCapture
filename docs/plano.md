@@ -62,6 +62,7 @@ Executar um processo FastAPI com um consumidor de fila. Usar SQLite para sessõe
 Estados de sessão:
 
 - capturando;
+- pausada;
 - interrompida;
 - finalizando;
 - concluída;
@@ -88,6 +89,8 @@ API versionada em `/api/v1`:
 | Enviar bloco | `PUT /sessions/{id}/blocks/{sequence}`: áudio, posição, quantidade de amostras e checksum |
 | Consultar andamento | `GET /sessions/{id}`: estados, duração, contadores e erros |
 | Finalizar | `POST /sessions/{id}/finish`: última sequência e total de amostras |
+| Pausar | `POST /sessions/{id}/pause` |
+| Retomar | `POST /sessions/{id}/resume` |
 | Reprocessar falhas | `POST /sessions/{id}/retry` |
 | Consultar histórico | `GET /sessions`: últimas 20 sessões |
 
@@ -142,7 +145,7 @@ Limpar áudio temporário somente após confirmar a gravação da nota. Preserva
 O popup terá três estados principais:
 
 - **Preparação:** título, pasta, idioma e disponibilidade do servidor.
-- **Captura:** indicador de gravação, duração, tarefas concluídas/pendentes e botão Finalizar.
+- **Captura:** indicador de gravação, duração, tarefas concluídas/pendentes e controles Pausar, Retomar e Finalizar.
 - **Conclusão:** processamento pendente ou nota salva, caminho e botão Abrir no Obsidian.
 
 Erros e sessões interrompidas aparecerão também no histórico. Pausa manual, criação de pastas e edição da transcrição ficam fora da primeira versão.
@@ -154,7 +157,7 @@ Erros e sessões interrompidas aparecerão também no histórico. Pausa manual, 
 3. **Markdown no vault:** seleção de pasta, timestamps, montagem, escrita segura e limpeza posterior ao sucesso.
 4. **Uso diário:** configuração inicial, serviço automático, histórico, mensagens de erro e abertura no Obsidian.
 
-Testes automatizados com `pytest` e `Vitest` cobrirão montagem de áudio, fronteiras entre janelas, timestamps, idempotência, recuperação, autenticação e contenção de caminhos. Integrações usarão uma Groq simulada; chamadas reais serão verificações explícitas.
+Testes automatizados com `pytest` e `Vitest` cobrirão montagem de áudio, fronteiras entre janelas, timestamps, idempotência, pausa/retomada, recuperação, autenticação e contenção de caminhos. Integrações usarão uma Groq simulada; chamadas reais serão verificações explícitas.
 
 A validação final no Brave incluirá:
 

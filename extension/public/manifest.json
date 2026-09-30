@@ -6,6 +6,6 @@
   "action": { "default_title": "StudyCapture", "default_popup": "popup.html" },
   "options_page": "options.html",
   "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["tabCapture", "activeTab", "offscreen", "storage", "tabs", "alarms"],
+  "permissions": ["tabCapture", "activeTab", "scripting", "offscreen", "storage", "tabs", "alarms", "notifications"],
   "host_permissions": ["http://127.0.0.1:8765/*"]
 }

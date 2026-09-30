@@ -12,6 +12,8 @@ Ele foi pensado para aulas, cursos, reuniões e vídeos que você queira revisar
 - Divide a captura em blocos de aproximadamente cinco segundos.
 - Persiste os blocos no IndexedDB antes de enviá-los.
 - Reenvia blocos quando o servidor ou a rede ficam indisponíveis.
+- Permite pausar e retomar a captura manualmente.
+- Pausa automaticamente quando detecta que um vídeo HTML5 foi pausado ou terminou.
 - Transcreve em janelas de aproximadamente 60 segundos, com contexto sobreposto.
 - Usa `whisper-large-v3-turbo` da Groq, com timestamps de segmentos e palavras.
 - Salva uma única nota Markdown no vault do Obsidian.
@@ -263,11 +265,12 @@ Eu
 O valor enviado ao servidor é o caminho relativo completo, como `Eu/Cursos/Psicologia/Aulas`.
 
 6. Clique em “Começar captura”.
-7. Feche o popup ou troque de aba, se quiser.
-8. Quando terminar, abra o popup e clique em “Finalizar captura”.
-9. Aguarde o processamento e confira a nota no Obsidian.
+7. Feche o popup ou troque de aba, se quiser; a captura continua no documento offscreen.
+8. Use “Pausar captura” ou “Retomar captura” quando necessário.
+9. Quando terminar, abra o popup e clique em “Finalizar captura”.
+10. Aguarde a notificação de nota salva e confira o arquivo no Obsidian.
 
-O popup mostra a duração, blocos enviados, blocos pendentes e o andamento da transcrição.
+O popup mostra a duração, os blocos confirmados pelo servidor, os blocos ainda no IndexedDB e o andamento da transcrição. A finalização é processada pelo service worker e pelo servidor local mesmo que o popup seja fechado.
 
 ## Formato da nota
 
@@ -406,7 +409,7 @@ uvicorn server.studycapture.main:app --host 127.0.0.1 --port 8765
 ## Limitações atuais
 
 - Uma captura ativa por vez.
-- Não há pausa manual.
+- A detecção automática de vídeo depende de o site usar um elemento HTML5 `<video>` acessível à extensão.
 - Não há edição da transcrição na extensão.
 - Não há resumos, tradução, agentes ou RAG.
 - A extensão precisa ser carregada como extensão descompactada.

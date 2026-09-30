@@ -64,6 +64,10 @@ async def test_api_auth_upload_idempotency_and_conflict(tmp_path, monkeypatch):
         created = await client.post("/api/v1/sessions", headers=headers, json={"title": "Teste", "url": "https://example.com", "folder": "", "language": "pt"})
         assert created.status_code == 201
         session_id = created.json()["id"]
+        paused = await client.post(f"/api/v1/sessions/{session_id}/pause", headers=headers)
+        resumed = await client.post(f"/api/v1/sessions/{session_id}/resume", headers=headers)
+        assert paused.status_code == 200 and paused.json()["status"] == "pausada"
+        assert resumed.status_code == 200 and resumed.json()["status"] == "capturando"
         upload_headers = {**headers, "X-Position-Samples": "0", "X-Sample-Count": "160", "X-Checksum": checksum}
         first = await client.put(f"/api/v1/sessions/{session_id}/blocks/0", headers=upload_headers, content=wav)
         second = await client.put(f"/api/v1/sessions/{session_id}/blocks/0", headers=upload_headers, content=wav)
@@ -72,6 +76,8 @@ async def test_api_auth_upload_idempotency_and_conflict(tmp_path, monkeypatch):
         other = pcm_to_wav(b"\x01\0" * 160)
         conflict = await client.put(f"/api/v1/sessions/{session_id}/blocks/0", headers={**upload_headers, "X-Checksum": hashlib.sha256(other).hexdigest()}, content=other)
         assert conflict.status_code == 409
+        finished = await client.post(f"/api/v1/sessions/{session_id}/finish", headers=headers, json={"last_sequence": 0, "total_samples": 160})
+        assert finished.status_code == 200 and finished.json()["status"] == "finalizando"
 
 
 def test_symlink_vault_path_is_rejected(tmp_path):

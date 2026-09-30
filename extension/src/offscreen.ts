@@ -8,17 +8,23 @@ function arrayBufferToBase64(data: ArrayBuffer): string { const bytes = new Uint
 
 let captureContext: AudioContext | undefined; let playbackContext: AudioContext | undefined; let source: MediaStreamAudioSourceNode | undefined; let recorder: AudioWorkletNode | undefined; let stream: MediaStream | undefined; let activeSession = "";
 let pendingBlockSends: Promise<void> = Promise.resolve();
+let resolveFlush: (() => void) | undefined;
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "offscreen-start") { void start(message.streamId, message.sessionId).then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: String(error) })); return true; }
   if (message.type === "offscreen-stop") {
+    const flushed = new Promise<void>((resolve) => { resolveFlush = resolve; });
     recorder?.port.postMessage({ type: "flush" });
     void new Promise((resolve) => setTimeout(resolve, 250)).then(async () => {
+      await Promise.race([flushed, new Promise<void>((resolve) => setTimeout(resolve, 2000))]);
       await pendingBlockSends;
+      resolveFlush = undefined;
       stream?.getTracks().forEach((track) => track.stop()); await captureContext?.close(); await playbackContext?.close(); sendResponse({ ok: true });
     });
     return true;
   }
+  if (message.type === "offscreen-pause") { const operation = captureContext?.suspend(); if (!operation) return sendResponse({ ok: false, error: "A captura não está ativa." }); void operation.then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: String(error) })); return true; }
+  if (message.type === "offscreen-resume") { const operation = captureContext?.resume(); if (!operation) return sendResponse({ ok: false, error: "A captura não está pausada." }); void operation.then(() => sendResponse({ ok: true })).catch((error) => sendResponse({ ok: false, error: String(error) })); return true; }
   return false;
 });
 
@@ -40,6 +46,7 @@ async function start(streamId: string, sessionId: string): Promise<void> {
       });
       pendingBlockSends = block.catch(() => undefined);
     }
+    if (event.data.type === "stopped") resolveFlush?.();
   };
   await captureContext.resume(); await playbackContext.resume();
 }

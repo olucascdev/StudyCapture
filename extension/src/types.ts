@@ -1,4 +1,4 @@
-export type CaptureStatus = "capturando" | "finalizando" | "concluída" | "erro" | "interrompida";
+export type CaptureStatus = "capturando" | "pausada" | "finalizando" | "concluída" | "erro" | "interrompida";
 
 export interface Session {
   id: string;
@@ -16,6 +16,7 @@ export interface Session {
   error?: string | null;
   created_at?: string;
   last_sequence?: number | null;
+  expected_last_sequence?: number | null;
 }
 
 export interface CaptureBlock {
